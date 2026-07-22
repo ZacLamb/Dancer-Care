@@ -1,0 +1,323 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  PROVIDER
+  AGENCY
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum InviteStatus {
+  ACTIVE
+  USED
+  EXPIRED
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  INCOMPLETE
+}
+
+enum MediaType {
+  VIDEO
+  IMAGE
+  PDF
+  DOCUMENT
+  LINK
+}
+
+enum AnnouncementLabel {
+  COVERAGE
+  REMINDER
+  ANNOUNCEMENT
+  UPDATE
+  GENERAL
+}
+
+enum ContactType {
+  EMERGENCY
+  MEDICAL
+  FAMILY
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  agencyProfile   AgencyProfile?
+  patientProfile  PatientProfile?
+  providerProfile ProviderProfile?
+
+  auditLogs            AuditLog[]
+  sentMessages         DirectMessage[]       @relation("SentMessages")
+  receivedMessages     DirectMessage[]       @relation("ReceivedMessages")
+  announcements        Announcement[]
+  announcementComments AnnouncementComment[]
+}
+
+model AgencyProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agencyName String
+  address    String?
+  phone      String?
+  createdAt  DateTime @default(now())
+
+  patients  PatientProfile[]
+  providers ProviderProfile[]
+}
+
+model PatientProfile {
+  id          String         @id @default(cuid())
+  userId      String         @unique
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth DateTime?
+  address     String?
+  notes       String?
+  agencyId    String?
+  agency      AgencyProfile? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+
+  teamMembers         TeamMember[]
+  schedules           Schedule[]
+  taskTemplates       TaskTemplate[]
+  shiftTasks          ShiftTask[]
+  trainingCategories  TrainingCategory[]
+  trainingModules     TrainingModule[]
+  trainingMedia       TrainingMedia[]
+  announcements       Announcement[]
+  directMessages      DirectMessage[]
+  emergencyContacts   EmergencyContact[]
+  emergencyProtocols  EmergencyProtocol[]
+  emergencyHospitals  EmergencyHospital[]
+  inviteCodes         InviteCode[]
+}
+
+model ProviderProfile {
+  id        String         @id @default(cuid())
+  userId    String         @unique
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  bio       String?
+  agencyId  String?
+  agency    AgencyProfile? @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  createdAt DateTime       @default(now())
+
+  teamMembers TeamMember[]
+  schedules   Schedule[]
+}
+
+model TeamMember {
+  id         String          @id @default(cuid())
+  patientId  String
+  patient    PatientProfile  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  notes      String?
+  createdAt  DateTime        @default(now())
+
+  @@unique([patientId, providerId])
+}
+
+model InviteCode {
+  id               String         @id @default(cuid())
+  code             String         @unique
+  intendedRole     Role
+  patientId        String?
+  patient          PatientProfile? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  agencyId         String?
+  status           InviteStatus   @default(ACTIVE)
+  redeemedByUserId String?
+  expiresAt        DateTime
+  createdByUserId  String
+  createdAt        DateTime       @default(now())
+}
+
+model Schedule {
+  id              String           @id @default(cuid())
+  patientId       String
+  patient         PatientProfile   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId      String?
+  provider        ProviderProfile? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  providerNameText String?
+  shiftDate       DateTime
+  startTime       String
+  endTime         String
+  isOpen          Boolean          @default(false)
+  claimed         Boolean          @default(false)
+  notes           String?
+  createdAt       DateTime         @default(now())
+
+  shiftTasks ShiftTask[]
+}
+
+model TaskTemplate {
+  id               String          @id @default(cuid())
+  patientId        String
+  patient          PatientProfile  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title            String
+  category         String          @default("General")
+  instructions     String?
+  trainingModuleId String?
+  trainingModule   TrainingModule? @relation(fields: [trainingModuleId], references: [id], onDelete: SetNull)
+  createdAt        DateTime        @default(now())
+
+  shiftTasks ShiftTask[]
+}
+
+model ShiftTask {
+  id             String        @id @default(cuid())
+  scheduleId     String
+  schedule       Schedule      @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  taskTemplateId String?
+  taskTemplate   TaskTemplate? @relation(fields: [taskTemplateId], references: [id], onDelete: SetNull)
+  patientId      String
+  patient        PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title          String
+  status         TaskStatus    @default(PENDING)
+  completionNote String?
+  completedAt    DateTime?
+  createdAt      DateTime      @default(now())
+}
+
+model TrainingCategory {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  icon      String?
+  color     String?
+  sortOrder Int            @default(0)
+  createdAt DateTime       @default(now())
+
+  modules TrainingModule[]
+}
+
+model TrainingModule {
+  id           String           @id @default(cuid())
+  categoryId   String
+  category     TrainingCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      PatientProfile   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name         String
+  instructions String?
+  sortOrder    Int              @default(0)
+  createdAt    DateTime         @default(now())
+
+  media         TrainingMedia[]
+  taskTemplates TaskTemplate[]
+}
+
+model TrainingMedia {
+  id          String         @id @default(cuid())
+  moduleId    String
+  module      TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  displayName String
+  mediaType   MediaType
+  url         String
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+}
+
+model Announcement {
+  id         String            @id @default(cuid())
+  patientId  String
+  patient    PatientProfile    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorName String
+  label      AnnouncementLabel @default(GENERAL)
+  title      String
+  body       String?
+  createdAt  DateTime          @default(now())
+
+  comments AnnouncementComment[]
+}
+
+model AnnouncementComment {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  authorId       String
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorName     String
+  body           String
+  createdAt      DateTime     @default(now())
+}
+
+model DirectMessage {
+  id         String         @id @default(cuid())
+  patientId  String
+  patient    PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User           @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId String
+  receiver   User           @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  body       String
+  read       Boolean        @default(false)
+  createdAt  DateTime       @default(now())
+}
+
+model EmergencyContact {
+  id          String         @id @default(cuid())
+  patientId   String
+  patient     PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name        String
+  phone       String
+  contactType ContactType    @default(EMERGENCY)
+  sortOrder   Int            @default(0)
+  createdAt   DateTime       @default(now())
+}
+
+model EmergencyProtocol {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title     String
+  steps     Json
+  createdAt DateTime       @default(now())
+}
+
+model EmergencyHospital {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  address   String?
+  distance  String?
+  createdAt DateTime       @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  targetType  String?
+  targetId    String?
+  detail      String?
+  createdAt   DateTime @default(now())
+}
